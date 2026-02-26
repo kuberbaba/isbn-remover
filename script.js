@@ -1,80 +1,123 @@
-const uploadInput = document.getElementById("pdfUpload");
+const upload = document.getElementById("upload");
 const statusText = document.getElementById("status");
 
-uploadInput.addEventListener("change", async (e) => {
+upload.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  statusText.innerText = "Processing PDF...";
+  statusText.innerText = "Processing...";
 
   const arrayBuffer = await file.arrayBuffer();
 
-  // Load original PDF using pdf-lib
-  const { PDFDocument, StandardFonts, rgb } = PDFLib;
-  const pdfDoc = await PDFDocument.load(arrayBuffer);
-  const pages = pdfDoc.getPages();
-
-  // Load with PDF.js to extract text positions
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
 
-  let isbnColumnX = null;
+  let rows = [];
 
-  for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex++) {
-    const page = await pdf.getPage(pageIndex + 1);
-    const textContent = await page.getTextContent();
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
 
-    // Detect ISBN column X position from header
-    textContent.items.forEach(item => {
-      if (item.str.trim() === "ISBN/Code") {
-        isbnColumnX = item.transform[4];
-      }
+    const lines = content.items.map(i => i.str).join(" ");
+    const split = lines.split(/(?=\d+\s+(97|BK))/);
+
+    split.forEach(line => {
+      const clean = line.trim();
+      if (!/^\d+\s/.test(clean)) return;
+
+      const tokens = clean.split(/\s+/);
+
+      if (tokens.length < 8) return;
+
+      const disc = tokens.pop();
+      const price = tokens.pop();
+      const curr = tokens.pop();
+      const qty = tokens.pop();
+
+      const slNo = tokens.shift();
+      const isbn = tokens.shift(); // removed
+
+      const publisher = tokens.slice(-2).join(" ");
+      const author = tokens.slice(-4, -2).join(" ");
+      const title = tokens.slice(0, -4).join(" ");
+
+      rows.push({
+        slNo,
+        title,
+        author,
+        publisher,
+        qty,
+        curr,
+        price,
+        disc
+      });
     });
   }
 
-  if (isbnColumnX === null) {
-    statusText.innerText = "ISBN column not found.";
-    return;
-  }
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const newPdf = await PDFDocument.create();
+  const font = await newPdf.embedFont(StandardFonts.Helvetica);
 
-  const isbnMinX = isbnColumnX - 5;
-  const isbnMaxX = isbnColumnX + 80;
+  let page = newPdf.addPage();
+  const { width, height } = page.getSize();
 
-  for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex++) {
-    const page = await pdf.getPage(pageIndex + 1);
-    const textContent = await page.getTextContent();
-    const pdfLibPage = pages[pageIndex];
+  let y = height - 50;
 
-    textContent.items.forEach(item => {
-      const text = item.str.trim();
-      const x = item.transform[4];
-      const y = item.transform[5];
+  page.drawText("PURCHASE ORDER", {
+    x: 50,
+    y,
+    size: 16,
+    font
+  });
 
-      const isInColumn = x >= isbnMinX && x <= isbnMaxX;
-      const isBK = /^BK\s?\d+$/i.test(text);
-      const isISBN = /97[89]\d{10}/.test(text);
+  y -= 40;
 
-      if (isInColumn || isBK || isISBN) {
-        // Draw white rectangle over the text to remove it
-        pdfLibPage.drawRectangle({
-          x: x,
-          y: y - 2,
-          width: item.width,
-          height: item.height + 4,
-          color: rgb(1, 1, 1),
-        });
-      }
+  const headers = ["Sl No", "Title", "Author", "Publisher", "Qty", "Curr", "Price", "Disc%"];
+  const colWidths = [40, 200, 100, 120, 40, 40, 60, 50];
+
+  let x = 40;
+
+  headers.forEach((h, i) => {
+    page.drawText(h, { x, y, size: 10, font });
+    x += colWidths[i];
+  });
+
+  y -= 15;
+
+  for (let r of rows) {
+    if (y < 50) {
+      page = newPdf.addPage();
+      y = height - 50;
+    }
+
+    x = 40;
+
+    const values = [
+      r.slNo,
+      r.title.substring(0, 40),
+      r.author,
+      r.publisher,
+      r.qty,
+      r.curr,
+      r.price,
+      r.disc
+    ];
+
+    values.forEach((val, i) => {
+      page.drawText(String(val), { x, y, size: 9, font });
+      x += colWidths[i];
     });
+
+    y -= 15;
   }
 
-  const pdfBytes = await pdfDoc.save();
+  const pdfBytes = await newPdf.save();
 
-  // Auto download
   const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "cleaned.pdf";
+  link.download = "cleaned_PO.pdf";
   link.click();
 
-  statusText.innerText = "Done ✅ Downloaded automatically.";
+  statusText.innerText = "Done ✅ Downloaded.";
 });
