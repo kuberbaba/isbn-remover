@@ -2,23 +2,19 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>ISBN Remover</title>
+  <title>PO ISBN Remover</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <div class="container">
-    <h2>Upload PDF</h2>
-    <input type="file" id="pdfUpload" accept="application/pdf" />
+    <h2>Upload Purchase Order PDF</h2>
+    <input type="file" id="upload" accept="application/pdf" />
     <p id="status"></p>
   </div>
 
-  <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-  <!-- PDF-LIB -->
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-
   <script src="script.js"></script>
 </body>
 </html>
